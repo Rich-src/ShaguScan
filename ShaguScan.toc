@@ -2,7 +2,7 @@
 ## Title: |cffffcc00Shagu|cffffffffScan
 ## Author: Shagu
 ## Notes: Uses SuperWoW GUIDs to show nearby units
-## Version: 1.0
+## Version: 1.1
 ## SavedVariablesPerCharacter: ShaguScan_db
 
 global.lua

@@ -83,7 +83,13 @@ ui.CreateRoot = function(parent, caption)
   frame.settings.tex:SetAlpha(.5)
 
   frame.settings:SetScript("OnClick", function()
-    settings.OpenConfig(this:GetParent().id)
+    local parent = this and this:GetParent()
+    local id = parent and parent.id or "Scanner"
+    if ShaguScan and ShaguScan.settings and ShaguScan.settings.OpenConfig then
+      ShaguScan.settings.OpenConfig(id)
+    elseif settings and settings.OpenConfig then
+      settings.OpenConfig(id)
+    end
   end)
 
   return frame
@@ -245,7 +251,11 @@ end
 
 ui:SetAllPoints()
 ui:SetScript("OnUpdate", function()
-  if ( this.tick or 1) > GetTime() then return else this.tick = GetTime() + .5 end
+  -- throttle updates
+  if ( this.tick or 1) > GetTime() then 
+    return 
+  end
+  this.tick = GetTime() + .5 
 
   -- remove old leftover frames
   for caption, root in pairs(ui.frames) do
@@ -287,10 +297,8 @@ ui:SetScript("OnUpdate", function()
       root.filter_conf = config.filter
     end
 
-    -- run through all guids and fill with bars
-    local title_size = 12 + config.spacing
-    local width, height = config.width, config.height + title_size
-    local x, y, count = 0, 0, 0
+    -- gather and sort units
+    local units = {}
     for guid, time in pairs(ShaguScan.core.guids) do
       -- apply filters
       local visible = true
@@ -300,28 +308,90 @@ ui:SetScript("OnUpdate", function()
         end
       end
 
-      -- display element if filters allow it
       if UnitExists(guid) and visible then
-        count = count + 1
-
-        if count > config.maxrow then
-          count, x = 1, x + config.width + config.spacing
-          width = math.max(x + config.width, width)
+        local health = UnitHealth(guid)
+        local maxHealth = UnitHealthMax(guid)
+        local healthPercent = health / (maxHealth > 0 and maxHealth or 1)
+        
+        -- calculate distance score (lower = closer, based on interaction ranges)
+        local distance = 100
+        if CheckInteractDistance(guid, 1) then -- 28 yards (inspect range)
+          distance = 25
+        elseif CheckInteractDistance(guid, 2) then -- 11 yards (trade range)
+          distance = 50
+        elseif CheckInteractDistance(guid, 3) then -- 10 yards (duel range)
+          distance = 75
         end
 
+        local sortScore = 0
+        if config.sortBy == "health" then
+          -- prioritize low health
+          sortScore = healthPercent
+        elseif config.sortBy == "both" then
+          -- weighted combination of health and distance
+          sortScore = (healthPercent * 0.5) + ((distance/100) * 0.5)
+        else -- distance is default
+          sortScore = distance/100
+        end
+
+        -- lower score = higher priority
+        table.insert(units, {
+          guid = guid,
+          sortScore = sortScore,
+          health = healthPercent,
+          distance = distance
+        })
+      end
+    end
+
+    -- sort units based on score (lower score = higher priority)
+    table.sort(units, function(a, b)
+      return a.sortScore < b.sortScore
+    end)
+
+    -- limit number of units if maxunits is set
+    local unitCount = table.getn(units)
+    if config.maxunits and unitCount > config.maxunits then
+      for i = config.maxunits + 1, unitCount do
+        units[i] = nil
+      end
+    end
+
+    -- display units
+    local title_size = 12 + config.spacing
+    local width, height = config.width, config.height + title_size
+    local x, y, count = 0, 0, 0
+    
+    -- clear old frames first
+    for guid, frame in pairs(root.frames) do
+      root.frames[guid]:Hide()
+      root.frames[guid] = nil
+    end
+
+    -- display sorted and filtered units
+    for _, unit in ipairs(units) do
+      local guid = unit.guid
+      if UnitExists(guid) then
+        count = count + 1
+        
+        if count > config.maxrow then
+          count = 1
+          x = x + config.width + config.spacing
+        end
+        
         y = (count-1) * (config.height + config.spacing) + title_size
         height = math.max(y + config.height + config.spacing, height)
+        width = math.max(x + config.width, width)
 
+        -- create or update the frame
         root.frames[guid] = root.frames[guid] or root:CreateBar(guid)
+        
+        -- update position
+        root.frames[guid]:ClearAllPoints()
+        root.frames[guid]:SetPoint("TOPLEFT", root, "TOPLEFT", x, -y)
+        root.frames[guid].pos = x..-y
 
-        -- update position if required
-        if not root.frames[guid].pos or root.frames[guid].pos ~= x..-y then
-          root.frames[guid]:ClearAllPoints()
-          root.frames[guid]:SetPoint("TOPLEFT", root, "TOPLEFT", x, -y)
-          root.frames[guid].pos = x..-y
-        end
-
-        -- update sizes if required
+        -- update size if needed
         if not root.frames[guid].sizes or root.frames[guid].sizes ~= config.width..config.height then
           root.frames[guid]:SetWidth(config.width)
           root.frames[guid]:SetHeight(config.height)
@@ -329,15 +399,14 @@ ui:SetScript("OnUpdate", function()
         end
 
         root.frames[guid]:Show()
-      elseif root.frames[guid] then
-        root.frames[guid]:Hide()
-        root.frames[guid] = nil
       end
     end
 
-    -- update window size
-    root:SetWidth(width)
-    root:SetHeight(height)
+    -- update the window size
+    if width > 0 and height > 0 then
+      root:SetWidth(width)
+      root:SetHeight(height)
+    end
   end
 end)
 

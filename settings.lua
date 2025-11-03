@@ -28,7 +28,7 @@ settings.textborder = {
 settings.CreateLabel = function(parent, text)
   local label = parent:CreateFontString(nil, 'HIGH', 'GameFontWhite')
   label:SetFont(STANDARD_TEXT_FONT, 9)
-  label:SetText(text)
+  label:SetText(tostring(text))
   label:SetHeight(18)
   return label
 end
@@ -49,7 +49,7 @@ settings.CreateTextBox = function(parent, text)
   textbox:SetFontObject(GameFontNormal)
   textbox:SetFont(STANDARD_TEXT_FONT, 9)
   textbox:SetAutoFocus(false)
-  textbox:SetText((text or ""))
+  textbox:SetText(tostring(text or ""))
 
   textbox:SetScript("OnEscapePressed", function(self)
     this:ClearFocus()
@@ -97,7 +97,7 @@ settings.OpenConfig = function(caption)
   dialog:SetFrameStrata("DIALOG")
   dialog:SetPoint("CENTER", 0, 0)
   dialog:SetWidth(264)
-  dialog:SetHeight(264)
+  dialog:SetHeight(340)
 
   dialog:EnableMouse(true)
   dialog:RegisterForDrag("LeftButton")
@@ -128,6 +128,8 @@ settings.OpenConfig = function(caption)
     local height = dialog.height:GetText()
     local spacing = dialog.spacing:GetText()
     local maxrow = dialog.maxrow:GetText()
+    local maxunits = dialog.maxunits:GetText()
+    local sortBy = dialog.sortBy:GetText()
     local anchor = dialog.anchor:GetText()
     local scale = dialog.scale:GetText()
     local x = dialog.x:GetText()
@@ -140,6 +142,8 @@ settings.OpenConfig = function(caption)
       height = tonumber(height) or config.height,
       spacing = tonumber(spacing) or config.spacing,
       maxrow = tonumber(maxrow) or config.maxrow,
+      maxunits = tonumber(maxunits) or config.maxunits,
+      sortBy = sortBy == "distance" or sortBy == "health" or sortBy == "both" and sortBy or "distance",
       anchor = utils.IsValidAnchor(anchor) and anchor or config.anchor,
       scale = tonumber(scale) or config.scale,
       x = tonumber(x) or config.x,
@@ -309,9 +313,57 @@ settings.OpenConfig = function(caption)
 
   backdrop.pos = backdrop.pos + 18
 
+  -- Max Units
+  local caption = backdrop:CreateLabel("Max Units:")
+  caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
+
+  dialog.maxunits = backdrop:CreateTextBox(config.maxunits or 20)
+  dialog.maxunits:SetPoint("TOPLEFT", backdrop, "TOPLEFT", 60, -backdrop.pos)
+  dialog.maxunits:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
+  dialog.maxunits:SetScript("OnEnter", function()
+    dialog.maxunits:ShowTooltip({
+      "Maximum Number of Units",
+      "|cffaaaaaaLimits total units shown",
+      " ",
+      { "|cffffffffDefault", "20" }
+    })
+  end)
+
+  dialog.maxunits:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+
+  backdrop.pos = backdrop.pos + 18
+
+  -- Sort By
+  local caption = backdrop:CreateLabel("Sort By:")
+  caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
+
+  dialog.sortBy = backdrop:CreateTextBox(config.sortBy or "distance")
+  dialog.sortBy:SetPoint("TOPLEFT", backdrop, "TOPLEFT", 60, -backdrop.pos)
+  dialog.sortBy:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
+  dialog.sortBy:SetScript("OnEnter", function()
+    dialog.sortBy:ShowTooltip({
+      "Sort Units By",
+      "|cffaaaaaaEnter: distance, health, or both",
+      " ",
+      { "|cffffffffdistance", "Show closest units first" },
+      { "|cffffffffhealth", "Show lowest health first" },
+      { "|cffffffffboth", "Balance distance and health" },
+      " ",
+      { "|cffffffffDefault", "distance" }
+    })
+  end)
+
+  dialog.sortBy:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+  end)
+
+  backdrop.pos = backdrop.pos + 18
+
   -- Spacer
   backdrop.pos = backdrop.pos + 9
-
+  
   -- Anchor
   local caption = backdrop:CreateLabel("Anchor:")
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
@@ -396,6 +448,29 @@ settings.OpenConfig = function(caption)
     GameTooltip:Hide()
   end)
   backdrop.pos = backdrop.pos + 18
+  
+  -- finally show the dialog with a short fade-in
+  dialog:SetAlpha(0)
+  dialog:Show()
+  local fadeTime = 0.18
+  if UIFrameFadeIn then
+    -- use Blizzard helper if available
+    UIFrameFadeIn(dialog, fadeTime, 0, 1)
+  else
+    -- simple fallback fade
+    local elapsed = 0
+    dialog:SetScript("OnUpdate", function(self, el)
+      elapsed = elapsed + el
+      local a = elapsed / fadeTime
+      if a >= 1 then
+        self:SetAlpha(1)
+        self:SetScript("OnUpdate", nil)
+      else
+        self:SetAlpha(a)
+      end
+    end)
+  end
+
 end
 
 ShaguScan.settings = settings
